@@ -6,19 +6,29 @@ import Lamdera exposing (ClientId, SessionId)
 import Url exposing (Url)
 
 
-type Turn
-    = EmilsTurn
-    | MartinsTurn
+type Person
+    = Emil
+    | Martin
+    | Jon
+
+
+{-| How many fikas each person is ahead (positive) or behind (negative) by.
+-}
+type alias Balances =
+    { emil : Int
+    , martin : Int
+    , jon : Int
+    }
 
 
 type alias FrontendModel =
     { key : Key
-    , turn : Maybe Turn
+    , balances : Maybe Balances
     }
 
 
 type alias BackendModel =
-    { turn : Turn
+    { balances : Balances
     }
 
 
@@ -26,12 +36,11 @@ type FrontendMsg
     = UrlClicked UrlRequest
     | UrlChanged Url
     | NoOpFrontendMsg
-    | PressedEmilsTurn
-    | PressedMartinsTurn
+    | PressedBuyFika Person (List Person)
 
 
 type ToBackend
-    = ChangeTurn Turn
+    = BuyFika Person (List Person)
 
 
 type BackendMsg
@@ -39,4 +48,40 @@ type BackendMsg
 
 
 type ToFrontend
-    = CurrentTurn Turn
+    = CurrentBalances Balances
+
+
+{-| The buyer gains one fika for each recipient, and each recipient owes one fika.
+-}
+buyFika : Person -> List Person -> Balances -> Balances
+buyFika buyer recipients balances =
+    List.foldl
+        (\recipient acc -> addToBalance buyer 1 acc |> addToBalance recipient -1)
+        balances
+        (List.filter ((/=) buyer) recipients)
+
+
+addToBalance : Person -> Int -> Balances -> Balances
+addToBalance person amount balances =
+    case person of
+        Emil ->
+            { balances | emil = balances.emil + amount }
+
+        Martin ->
+            { balances | martin = balances.martin + amount }
+
+        Jon ->
+            { balances | jon = balances.jon + amount }
+
+
+getBalance : Person -> Balances -> Int
+getBalance person balances =
+    case person of
+        Emil ->
+            balances.emil
+
+        Martin ->
+            balances.martin
+
+        Jon ->
+            balances.jon

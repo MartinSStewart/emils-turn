@@ -31,7 +31,7 @@ app =
 init : Url.Url -> Nav.Key -> ( FrontendModel, Cmd FrontendMsg )
 init url key =
     ( { key = key
-      , turn = Nothing
+      , balances = Nothing
       }
     , Cmd.none
     )
@@ -58,18 +58,22 @@ update msg model =
         NoOpFrontendMsg ->
             ( model, Cmd.none )
 
-        PressedEmilsTurn ->
-            ( { model | turn = Just EmilsTurn }, Lamdera.sendToBackend (ChangeTurn EmilsTurn) )
-
-        PressedMartinsTurn ->
-            ( { model | turn = Just MartinsTurn }, Lamdera.sendToBackend (ChangeTurn MartinsTurn) )
+        PressedBuyFika buyer recipients ->
+            ( { model | balances = Maybe.map (buyFika buyer recipients) model.balances }
+            , Lamdera.sendToBackend (BuyFika buyer recipients)
+            )
 
 
 updateFromBackend : ToFrontend -> FrontendModel -> ( FrontendModel, Cmd FrontendMsg )
 updateFromBackend msg model =
     case msg of
-        CurrentTurn turn ->
-            ( { model | turn = Just turn }, Cmd.none )
+        CurrentBalances balances ->
+            ( { model | balances = Just balances }, Cmd.none )
+
+
+people : List Person
+people =
+    [ Emil, Martin, Jon ]
 
 
 view : FrontendModel -> Browser.Document FrontendMsg
@@ -82,63 +86,152 @@ view model =
             , Ui.padding 16
             , Ui.contentCenterY
             ]
-            (Ui.column
-                []
-                [ Ui.el
-                    []
-                    (case model.turn of
-                        Just EmilsTurn ->
-                            Ui.column
-                                [ Ui.spacing 32, Ui.contentCenterX ]
-                                [ title (Ui.html rustLogo) "Emil"
-                                , button
-                                    PressedMartinsTurn
-                                    (Ui.Prose.paragraph
-                                        [ Ui.Font.size 32, Ui.Font.center ]
-                                        [ Ui.text "Nej, nu är det "
-                                        , Ui.el [ Ui.Font.bold ] (Ui.text "Martin")
-                                        , Ui.text "'s\u{00A0}tur"
-                                        ]
-                                    )
-                                ]
+            (case model.balances of
+                Just balances ->
+                    Ui.column
+                        [ Ui.spacing 32, Ui.contentCenterX, Ui.widthMax 700, Ui.centerX ]
+                        [ case nextBuyer balances of
+                            Just person ->
+                                title person
 
-                        Just MartinsTurn ->
-                            Ui.column
-                                [ Ui.spacing 32, Ui.contentCenterX ]
-                                [ title
-                                    (Ui.image
-                                        [ Ui.width (Ui.px 42) ]
-                                        { source = "/elm-logo.png", description = "", onLoad = Nothing }
-                                    )
-                                    "Martin"
-                                , button PressedEmilsTurn
-                                    (Ui.Prose.paragraph
-                                        [ Ui.Font.size 32, Ui.Font.center ]
-                                        [ Ui.text "Nej, nu är det "
-                                        , Ui.el [ Ui.Font.bold ] (Ui.text "Emil")
-                                        , Ui.text "'s\u{00A0}tur"
-                                        ]
-                                    )
-                                ]
+                            Nothing ->
+                                Ui.none
+                        , Ui.row
+                            [ Ui.spacing 16, Ui.centerX, Ui.width Ui.shrink ]
+                            (List.map (balanceView balances) people)
+                        , Ui.column [ Ui.spacing 24 ] (List.map buyerButtons people)
+                        ]
 
-                        Nothing ->
-                            Ui.none
-                    )
-                ]
+                Nothing ->
+                    Ui.none
             )
         ]
     }
 
 
-title logo name =
+{-| The person furthest behind is the one who should buy next. If several people are tied, nobody is singled out.
+-}
+nextBuyer : Balances -> Maybe Person
+nextBuyer balances =
+    let
+        lowest =
+            List.map (\person -> getBalance person balances) people |> List.minimum |> Maybe.withDefault 0
+    in
+    case List.filter (\person -> getBalance person balances == lowest) people of
+        [ person ] ->
+            Just person
+
+        _ ->
+            Nothing
+
+
+title : Person -> Ui.Element msg
+title person =
     Ui.column
         [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
         [ Ui.text "Nu är det "
         , Ui.row
-            [ Ui.centerX, Ui.Font.size 60 ]
-            [ logo, Ui.el [ Ui.Font.bold, Ui.width Ui.shrink ] (Ui.text name), Ui.text "'s" ]
+            [ Ui.centerX, Ui.Font.size 60, Ui.width Ui.shrink ]
+            [ logo 42 person, Ui.el [ Ui.Font.bold, Ui.width Ui.shrink ] (Ui.text (personName person)), Ui.text "'s" ]
         , Ui.text " tur att köpa\u{00A0}fika!"
         ]
+
+
+balanceView : Balances -> Person -> Ui.Element msg
+balanceView balances person =
+    let
+        balance =
+            getBalance person balances
+    in
+    Ui.column
+        [ Ui.spacing 8
+        , Ui.contentCenterX
+        , Ui.width (Ui.px 120)
+        , Ui.padding 12
+        , Ui.rounded 16
+        , Ui.border 1
+        , Ui.borderColor (Ui.rgb 200 200 200)
+        ]
+        [ logo 32 person
+        , Ui.el [ Ui.Font.bold, Ui.Font.size 20, Ui.Font.center ] (Ui.text (personName person))
+        , Ui.el
+            [ Ui.Font.size 32
+            , Ui.Font.center
+            , Ui.Font.bold
+            , if balance > 0 then
+                Ui.Font.color (Ui.rgb 0 140 60)
+
+              else if balance < 0 then
+                Ui.Font.color (Ui.rgb 200 30 30)
+
+              else
+                Ui.Font.color (Ui.rgb 100 100 100)
+            ]
+            (Ui.text
+                (if balance > 0 then
+                    "+" ++ String.fromInt balance
+
+                 else
+                    String.fromInt balance
+                )
+            )
+        ]
+
+
+buyerButtons : Person -> Ui.Element FrontendMsg
+buyerButtons buyer =
+    let
+        others =
+            List.filter ((/=) buyer) people
+    in
+    Ui.column
+        [ Ui.spacing 8 ]
+        (buyButton buyer others :: List.map (\other -> buyButton buyer [ other ]) others)
+
+
+buyButton : Person -> List Person -> Ui.Element FrontendMsg
+buyButton buyer recipients =
+    button
+        (PressedBuyFika buyer recipients)
+        (Ui.row
+            [ Ui.spacing 8, Ui.Font.size 20 ]
+            [ logo 24 buyer
+            , Ui.Prose.paragraph
+                []
+                [ Ui.el [ Ui.Font.bold ] (Ui.text (personName buyer))
+                , Ui.text " buys for "
+                , Ui.el [ Ui.Font.bold ] (Ui.text (List.map personName recipients |> String.join " and "))
+                ]
+            ]
+        )
+
+
+personName : Person -> String
+personName person =
+    case person of
+        Emil ->
+            "Emil"
+
+        Martin ->
+            "Martin"
+
+        Jon ->
+            "Jon"
+
+
+logo : Int -> Person -> Ui.Element msg
+logo size person =
+    case person of
+        Emil ->
+            Ui.el [ Ui.width (Ui.px size), Ui.height (Ui.px size) ] (Ui.html (rustLogo size))
+
+        Martin ->
+            Ui.image
+                [ Ui.width (Ui.px size) ]
+                { source = "/elm-logo.png", description = "", onLoad = Nothing }
+
+        Jon ->
+            Ui.el [ Ui.width (Ui.px size), Ui.height (Ui.px size) ] (Ui.html (gavelLogo size))
 
 
 button : msg -> Ui.Element msg -> Ui.Element msg
@@ -156,12 +249,68 @@ button onPress content =
         content
 
 
-rustLogo : Html msg
-rustLogo =
+gavelLogo : Int -> Html msg
+gavelLogo size =
+    Svg.svg
+        [ Svg.Attributes.height (String.fromInt size)
+        , Svg.Attributes.width (String.fromInt size)
+        , Svg.Attributes.viewBox "0 0 32 32"
+        ]
+        [ Svg.g
+            [ Svg.Attributes.transform "rotate(-45 16 16)", Svg.Attributes.fill "#8b5a2b" ]
+            [ Svg.rect
+                [ Svg.Attributes.x "14.5"
+                , Svg.Attributes.y "9"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "18"
+                , Svg.Attributes.rx "1.5"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "8"
+                , Svg.Attributes.y "2"
+                , Svg.Attributes.width "16"
+                , Svg.Attributes.height "8"
+                , Svg.Attributes.rx "2"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "6.5"
+                , Svg.Attributes.y "1"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "10"
+                , Svg.Attributes.rx "1"
+                , Svg.Attributes.fill "#5c3a1a"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "22.5"
+                , Svg.Attributes.y "1"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "10"
+                , Svg.Attributes.rx "1"
+                , Svg.Attributes.fill "#5c3a1a"
+                ]
+                []
+            ]
+        , Svg.rect
+            [ Svg.Attributes.x "1"
+            , Svg.Attributes.y "27"
+            , Svg.Attributes.width "14"
+            , Svg.Attributes.height "4"
+            , Svg.Attributes.rx "1"
+            , Svg.Attributes.fill "#5c3a1a"
+            ]
+            []
+        ]
+
+
+rustLogo : Int -> Html msg
+rustLogo size =
     Svg.svg
         [ Svg.Attributes.version "1.1"
-        , Svg.Attributes.height "32"
-        , Svg.Attributes.width "32"
+        , Svg.Attributes.height (String.fromInt size)
+        , Svg.Attributes.width (String.fromInt size)
         , Svg.Attributes.viewBox "0 0 106 106"
         ]
         [ Svg.g
