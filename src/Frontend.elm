@@ -137,11 +137,20 @@ purchaseOptions buyer =
 
 purchaseText : String -> Purchase -> List (Ui.Element msg)
 purchaseText verb purchase =
-    Ui.el [ Ui.Font.bold ] (Ui.text (personName purchase.buyer))
+    personLabel purchase.buyer
         :: Ui.text (" " ++ verb ++ " ")
-        :: (List.map (\person -> Ui.el [ Ui.Font.bold ] (Ui.text (personName person))) purchase.recipients
+        :: (List.map personLabel purchase.recipients
                 |> List.intersperse (Ui.text " och ")
            )
+
+
+personLabel : Person -> Ui.Element msg
+personLabel person =
+    Ui.row
+        [ Ui.width Ui.shrink ]
+        [ Ui.el [ Ui.paddingRight 4 ] (personIcon 18 person)
+        , Ui.el [ Ui.Font.bold ] (Ui.text (personName person))
+        ]
 
 
 view : FrontendModel -> Browser.Document FrontendMsg
