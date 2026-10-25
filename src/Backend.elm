@@ -15,7 +15,7 @@ app =
 
 init : ( BackendModel, Cmd BackendMsg )
 init =
-    ( { turn = MartinsTurn }
+    ( { purchases = [] }
     , Cmd.none
     )
 
@@ -24,11 +24,18 @@ update : BackendMsg -> BackendModel -> ( BackendModel, Cmd BackendMsg )
 update msg model =
     case msg of
         OnConnect _ clientId ->
-            ( model, Lamdera.sendToFrontend clientId (CurrentTurn model.turn) )
+            ( model, Lamdera.sendToFrontend clientId (CurrentPurchases model.purchases) )
 
 
 updateFromFrontend : SessionId -> ClientId -> ToBackend -> BackendModel -> ( BackendModel, Cmd BackendMsg )
 updateFromFrontend _ _ msg model =
-    case msg of
-        ChangeTurn turn ->
-            ( { model | turn = turn }, Lamdera.broadcast (CurrentTurn turn) )
+    let
+        purchases =
+            case msg of
+                BoughtFika purchase ->
+                    purchase :: model.purchases
+
+                UndoLastPurchase ->
+                    List.drop 1 model.purchases
+    in
+    ( { model | purchases = purchases }, Lamdera.broadcast (CurrentPurchases purchases) )

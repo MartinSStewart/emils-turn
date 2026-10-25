@@ -3,7 +3,6 @@ module Frontend exposing (..)
 import Browser exposing (UrlRequest(..))
 import Browser.Navigation as Nav
 import Html exposing (Html)
-import Html.Attributes as Attr
 import Lamdera
 import Svg
 import Svg.Attributes
@@ -31,7 +30,7 @@ app =
 init : Url.Url -> Nav.Key -> ( FrontendModel, Cmd FrontendMsg )
 init url key =
     ( { key = key
-      , turn = Nothing
+      , purchases = Nothing
       }
     , Cmd.none
     )
@@ -58,18 +57,91 @@ update msg model =
         NoOpFrontendMsg ->
             ( model, Cmd.none )
 
-        PressedEmilsTurn ->
-            ( { model | turn = Just EmilsTurn }, Lamdera.sendToBackend (ChangeTurn EmilsTurn) )
+        PressedBought purchase ->
+            ( model, Lamdera.sendToBackend (BoughtFika purchase) )
 
-        PressedMartinsTurn ->
-            ( { model | turn = Just MartinsTurn }, Lamdera.sendToBackend (ChangeTurn MartinsTurn) )
+        PressedUndo ->
+            ( model, Lamdera.sendToBackend UndoLastPurchase )
 
 
 updateFromBackend : ToFrontend -> FrontendModel -> ( FrontendModel, Cmd FrontendMsg )
 updateFromBackend msg model =
     case msg of
-        CurrentTurn turn ->
-            ( { model | turn = Just turn }, Cmd.none )
+        CurrentPurchases purchases ->
+            ( { model | purchases = Just purchases }, Cmd.none )
+
+
+people : List Person
+people =
+    [ Emil, Martin, Jon ]
+
+
+personName : Person -> String
+personName person =
+    case person of
+        Emil ->
+            "Emil"
+
+        Martin ->
+            "Martin"
+
+        Jon ->
+            "Jon"
+
+
+personIcon : Int -> Person -> Ui.Element msg
+personIcon size person =
+    case person of
+        Emil ->
+            Ui.html (rustLogo size)
+
+        Martin ->
+            Ui.image
+                [ Ui.width (Ui.px (size * 42 // 32)) ]
+                { source = "/elm-logo.png", description = "", onLoad = Nothing }
+
+        Jon ->
+            Ui.html (gavelIcon size)
+
+
+{-| How many fikas a person is owed (positive) or owes (negative).
+-}
+balance : List Purchase -> Person -> Int
+balance purchases person =
+    List.foldl
+        (\purchase total ->
+            if purchase.buyer == person then
+                total + List.length purchase.recipients
+
+            else if List.member person purchase.recipients then
+                total - 1
+
+            else
+                total
+        )
+        0
+        purchases
+
+
+{-| Every way one person can buy fika for the others: both of them, or just one.
+-}
+purchaseOptions : Person -> List Purchase
+purchaseOptions buyer =
+    let
+        others =
+            List.filter (\person -> person /= buyer) people
+    in
+    { buyer = buyer, recipients = others }
+        :: List.map (\other -> { buyer = buyer, recipients = [ other ] }) others
+
+
+purchaseText : String -> Purchase -> List (Ui.Element msg)
+purchaseText verb purchase =
+    Ui.el [ Ui.Font.bold ] (Ui.text (personName purchase.buyer))
+        :: Ui.text (" " ++ verb ++ " ")
+        :: (List.map (\person -> Ui.el [ Ui.Font.bold ] (Ui.text (personName person))) purchase.recipients
+                |> List.intersperse (Ui.text " och ")
+           )
 
 
 view : FrontendModel -> Browser.Document FrontendMsg
@@ -82,63 +154,119 @@ view model =
             , Ui.padding 16
             , Ui.contentCenterY
             ]
-            (Ui.column
-                []
-                [ Ui.el
-                    []
-                    (case model.turn of
-                        Just EmilsTurn ->
-                            Ui.column
-                                [ Ui.spacing 32, Ui.contentCenterX ]
-                                [ title (Ui.html rustLogo) "Emil"
-                                , button
-                                    PressedMartinsTurn
+            (case model.purchases of
+                Just purchases ->
+                    Ui.column
+                        [ Ui.spacing 32, Ui.contentCenterX, Ui.widthMax 500, Ui.centerX ]
+                        [ title purchases
+                        , balancesView purchases
+                        , Ui.column [ Ui.spacing 24 ] (List.map buyerButtons people)
+                        , case purchases of
+                            last :: _ ->
+                                button PressedUndo
                                     (Ui.Prose.paragraph
-                                        [ Ui.Font.size 32, Ui.Font.center ]
-                                        [ Ui.text "Nej, nu är det "
-                                        , Ui.el [ Ui.Font.bold ] (Ui.text "Martin")
-                                        , Ui.text "'s\u{00A0}tur"
-                                        ]
+                                        [ Ui.Font.size 16, Ui.Font.center ]
+                                        (Ui.text "Ångra: " :: purchaseText "bjöd" last)
                                     )
-                                ]
 
-                        Just MartinsTurn ->
-                            Ui.column
-                                [ Ui.spacing 32, Ui.contentCenterX ]
-                                [ title
-                                    (Ui.image
-                                        [ Ui.width (Ui.px 42) ]
-                                        { source = "/elm-logo.png", description = "", onLoad = Nothing }
-                                    )
-                                    "Martin"
-                                , button PressedEmilsTurn
-                                    (Ui.Prose.paragraph
-                                        [ Ui.Font.size 32, Ui.Font.center ]
-                                        [ Ui.text "Nej, nu är det "
-                                        , Ui.el [ Ui.Font.bold ] (Ui.text "Emil")
-                                        , Ui.text "'s\u{00A0}tur"
-                                        ]
-                                    )
-                                ]
+                            [] ->
+                                Ui.none
+                        ]
 
-                        Nothing ->
-                            Ui.none
-                    )
-                ]
+                Nothing ->
+                    Ui.none
             )
         ]
     }
 
 
-title logo name =
+title : List Purchase -> Ui.Element msg
+title purchases =
+    let
+        lowest =
+            List.map (balance purchases) people |> List.minimum |> Maybe.withDefault 0
+    in
+    case List.filter (\person -> balance purchases person == lowest) people of
+        [ person ] ->
+            Ui.column
+                [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
+                [ Ui.text "Nu är det "
+                , Ui.row
+                    [ Ui.centerX, Ui.Font.size 60, Ui.width Ui.shrink, Ui.spacing 4 ]
+                    [ personIcon 32 person
+                    , Ui.el [ Ui.Font.bold, Ui.width Ui.shrink ] (Ui.text (personName person))
+                    , Ui.text "'s"
+                    ]
+                , Ui.text " tur att köpa\u{00A0}fika!"
+                ]
+
+        _ ->
+            Ui.el
+                [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
+                (Ui.text "Vem som helst kan köpa\u{00A0}fika!")
+
+
+balancesView : List Purchase -> Ui.Element msg
+balancesView purchases =
+    Ui.row
+        [ Ui.spacing 8 ]
+        (List.map
+            (\person ->
+                let
+                    amount =
+                        balance purchases person
+                in
+                Ui.column
+                    [ Ui.spacing 4
+                    , Ui.padding 12
+                    , Ui.rounded 16
+                    , Ui.border 1
+                    , Ui.borderColor (Ui.rgb 200 200 200)
+                    , Ui.contentCenterX
+                    ]
+                    [ Ui.el [ Ui.centerX, Ui.width Ui.shrink, Ui.height (Ui.px 32), Ui.contentCenterY ] (personIcon 24 person)
+                    , Ui.el [ Ui.Font.center, Ui.Font.size 18 ] (Ui.text (personName person))
+                    , Ui.el
+                        [ Ui.Font.center
+                        , Ui.Font.size 32
+                        , Ui.Font.bold
+                        , if amount > 0 then
+                            Ui.Font.color (Ui.rgb 20 140 60)
+
+                          else if amount < 0 then
+                            Ui.Font.color (Ui.rgb 200 40 40)
+
+                          else
+                            Ui.Font.color (Ui.rgb 100 100 100)
+                        ]
+                        (Ui.text
+                            (if amount > 0 then
+                                "+" ++ String.fromInt amount
+
+                             else
+                                String.fromInt amount
+                            )
+                        )
+                    ]
+            )
+            people
+        )
+
+
+buyerButtons : Person -> Ui.Element FrontendMsg
+buyerButtons buyer =
     Ui.column
-        [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
-        [ Ui.text "Nu är det "
-        , Ui.row
-            [ Ui.centerX, Ui.Font.size 60 ]
-            [ logo, Ui.el [ Ui.Font.bold, Ui.width Ui.shrink ] (Ui.text name), Ui.text "'s" ]
-        , Ui.text " tur att köpa\u{00A0}fika!"
-        ]
+        [ Ui.spacing 8 ]
+        (List.map
+            (\purchase ->
+                button (PressedBought purchase)
+                    (Ui.Prose.paragraph
+                        [ Ui.Font.size 20, Ui.Font.center ]
+                        (purchaseText "bjuder" purchase)
+                    )
+            )
+            (purchaseOptions buyer)
+        )
 
 
 button : msg -> Ui.Element msg -> Ui.Element msg
@@ -156,12 +284,71 @@ button onPress content =
         content
 
 
-rustLogo : Html msg
-rustLogo =
+gavelIcon : Int -> Html msg
+gavelIcon size =
     Svg.svg
         [ Svg.Attributes.version "1.1"
-        , Svg.Attributes.height "32"
-        , Svg.Attributes.width "32"
+        , Svg.Attributes.height (String.fromInt size)
+        , Svg.Attributes.width (String.fromInt size)
+        , Svg.Attributes.viewBox "0 0 32 32"
+        ]
+        [ Svg.g
+            [ Svg.Attributes.transform "rotate(-45 14 12)" ]
+            [ Svg.rect
+                [ Svg.Attributes.x "6"
+                , Svg.Attributes.y "7"
+                , Svg.Attributes.width "16"
+                , Svg.Attributes.height "9"
+                , Svg.Attributes.rx "2"
+                , Svg.Attributes.fill "black"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "4"
+                , Svg.Attributes.y "6"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "11"
+                , Svg.Attributes.rx "1"
+                , Svg.Attributes.fill "black"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "21"
+                , Svg.Attributes.y "6"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "11"
+                , Svg.Attributes.rx "1"
+                , Svg.Attributes.fill "black"
+                ]
+                []
+            , Svg.rect
+                [ Svg.Attributes.x "12.5"
+                , Svg.Attributes.y "16"
+                , Svg.Attributes.width "3"
+                , Svg.Attributes.height "16"
+                , Svg.Attributes.rx "1.5"
+                , Svg.Attributes.fill "black"
+                ]
+                []
+            ]
+        , Svg.rect
+            [ Svg.Attributes.x "2"
+            , Svg.Attributes.y "27"
+            , Svg.Attributes.width "14"
+            , Svg.Attributes.height "4"
+            , Svg.Attributes.rx "1"
+            , Svg.Attributes.fill "black"
+            ]
+            []
+        ]
+
+
+rustLogo : Int -> Html msg
+rustLogo size =
+    Svg.svg
+        [ Svg.Attributes.version "1.1"
+        , Svg.Attributes.height (String.fromInt size)
+        , Svg.Attributes.width (String.fromInt size)
         , Svg.Attributes.viewBox "0 0 106 106"
         ]
         [ Svg.g
