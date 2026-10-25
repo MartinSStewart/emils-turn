@@ -158,8 +158,7 @@ view model =
                 Just purchases ->
                     Ui.column
                         [ Ui.spacing 32, Ui.contentCenterX, Ui.widthMax 500, Ui.centerX ]
-                        [ title purchases
-                        , balancesView purchases
+                        [ balancesView purchases
                         , Ui.column [ Ui.spacing 24 ] (List.map buyerButtons people)
                         , case purchases of
                             last :: _ ->
@@ -178,32 +177,6 @@ view model =
             )
         ]
     }
-
-
-title : List Purchase -> Ui.Element msg
-title purchases =
-    let
-        lowest =
-            List.map (balance purchases) people |> List.minimum |> Maybe.withDefault 0
-    in
-    case List.filter (\person -> balance purchases person == lowest) people of
-        [ person ] ->
-            Ui.column
-                [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
-                [ Ui.text "Nu är det "
-                , Ui.row
-                    [ Ui.centerX, Ui.Font.size 60, Ui.width Ui.shrink, Ui.spacing 4 ]
-                    [ personIcon 32 person
-                    , Ui.el [ Ui.Font.bold, Ui.width Ui.shrink ] (Ui.text (personName person))
-                    , Ui.text "'s"
-                    ]
-                , Ui.text " tur att köpa\u{00A0}fika!"
-                ]
-
-        _ ->
-            Ui.el
-                [ Ui.centerX, Ui.Font.size 44, Ui.Font.center, Ui.Font.lineHeight 1.2 ]
-                (Ui.text "Vem som helst kan köpa\u{00A0}fika!")
 
 
 balancesView : List Purchase -> Ui.Element msg
