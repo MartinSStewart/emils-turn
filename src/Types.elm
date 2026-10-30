@@ -6,19 +6,26 @@ import Lamdera exposing (ClientId, SessionId)
 import Url exposing (Url)
 
 
-type Turn
-    = EmilsTurn
-    | MartinsTurn
+type Person
+    = Emil
+    | Martin
+    | Jon
+
+
+type alias Purchase =
+    { buyer : Person
+    , recipients : List Person
+    }
 
 
 type alias FrontendModel =
     { key : Key
-    , turn : Maybe Turn
+    , purchases : Maybe (List Purchase)
     }
 
 
 type alias BackendModel =
-    { turn : Turn
+    { purchases : List Purchase
     }
 
 
@@ -26,12 +33,13 @@ type FrontendMsg
     = UrlClicked UrlRequest
     | UrlChanged Url
     | NoOpFrontendMsg
-    | PressedEmilsTurn
-    | PressedMartinsTurn
+    | PressedBought Purchase
+    | PressedUndo
 
 
 type ToBackend
-    = ChangeTurn Turn
+    = BoughtFika Purchase
+    | UndoLastPurchase
 
 
 type BackendMsg
@@ -39,4 +47,4 @@ type BackendMsg
 
 
 type ToFrontend
-    = CurrentTurn Turn
+    = CurrentPurchases (List Purchase)
