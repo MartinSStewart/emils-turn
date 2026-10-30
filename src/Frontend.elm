@@ -160,7 +160,7 @@ view model =
         [ Ui.layout
             [ Ui.Font.family [ Ui.Font.sansSerif ]
             , Ui.height Ui.fill
-            , Ui.padding 16
+            , Ui.padding 8
             , Ui.contentCenterY
             ]
             (case model.purchases of
@@ -168,12 +168,12 @@ view model =
                     Ui.column
                         [ Ui.spacing 32, Ui.contentCenterX, Ui.widthMax 500, Ui.centerX ]
                         [ balancesView purchases
-                        , Ui.column [ Ui.spacing 24 ] (List.map buyerButtons people)
+                        , Ui.column [ Ui.spacing 16 ] (List.map buyerButtons people)
                         , case purchases of
                             last :: _ ->
                                 button PressedUndo
-                                    (Ui.Prose.paragraph
-                                        [ Ui.Font.size 16, Ui.Font.center ]
+                                    (Ui.row
+                                        [ Ui.Font.size 18, Ui.spacing 6 ]
                                         (Ui.text "Ångra: " :: purchaseText "bjöd" last)
                                     )
 
@@ -206,8 +206,7 @@ balancesView purchases =
                     , Ui.borderColor (Ui.rgb 200 200 200)
                     , Ui.contentCenterX
                     ]
-                    [ Ui.el [ Ui.centerX, Ui.width Ui.shrink, Ui.height (Ui.px 32), Ui.contentCenterY ] (personIcon 24 person)
-                    , Ui.el [ Ui.Font.center, Ui.Font.size 18 ] (Ui.text (personName person))
+                    [ personLabel person |> Ui.el [ Ui.centerX, Ui.Font.size 18 ]
                     , Ui.el
                         [ Ui.Font.center
                         , Ui.Font.size 32
@@ -242,8 +241,8 @@ buyerButtons buyer =
         (List.map
             (\purchase ->
                 button (PressedBought purchase)
-                    (Ui.Prose.paragraph
-                        [ Ui.Font.size 20, Ui.Font.center ]
+                    (Ui.row
+                        [ Ui.Font.size 20, Ui.Font.center, Ui.spacing 6 ]
                         (purchaseText "bjuder" purchase)
                     )
             )
@@ -255,8 +254,8 @@ button : msg -> Ui.Element msg -> Ui.Element msg
 button onPress content =
     Ui.el
         [ Ui.Input.button onPress
-        , Ui.rounded 16
-        , Ui.padding 16
+        , Ui.rounded 8
+        , Ui.paddingXY 16 12
         , Ui.border 1
         , Ui.borderColor (Ui.rgb 100 100 100)
         , Ui.widthMax 500
